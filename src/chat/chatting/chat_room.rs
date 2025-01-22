@@ -1,10 +1,14 @@
 use std::{collections::HashMap, sync::Arc};
 
-use anyhow::{Ok, Result};
 use chrono::{DateTime, Utc};
 use serde::Serialize;
 use tokio::sync::RwLock;
 use uuid::Uuid;
+
+use crate::{
+    config::{error::AppError, MangJooResult},
+    user::user::UserRole,
+};
 
 use super::ChatRoomId;
 
@@ -17,6 +21,26 @@ struct ChatRoom {
     status: RoomStatus,
     created_at: DateTime<Utc>,
     updated_at: DateTime<Utc>,
+}
+
+impl ChatRoom {
+    pub fn enter_agent(&mut self, agent_id: String) -> MangJooResult<()> {
+        if self.agent_id.is_some() {
+            return Err(AppError::InvalidRequest(
+                "This chat room is full".to_string(),
+            ));
+        }
+        self.agent_id = Some(agent_id);
+        self.status = RoomStatus::Connected;
+        self.updated_at = Utc::now();
+
+        Ok(())
+    }
+
+    pub fn end_chat(&mut self) {
+        self.status = RoomStatus::Ended;
+        self.updated_at = Utc::now();
+    }
 }
 
 #[derive(Debug, Clone, Serialize, PartialEq)]
@@ -38,7 +62,7 @@ impl ChatRooms {
         }
     }
 
-    pub async fn create_room(&self, customer_id: i64) -> Result<String> {
+    pub async fn create_room(&self, customer_id: i64) -> MangJooResult<String> {
         let room_id = Uuid::new_v4().to_string();
         let now = Utc::now();
 
@@ -61,8 +85,40 @@ impl ChatRooms {
         Ok(room_id.to_string())
     }
 
-    pub async fn is_available_room(&self, chat_room_id: ChatRoomId) -> bool {
+    pub async fn is_available_room(&self, chat_room_id: &ChatRoomId, user_id: i64) -> bool {
         let rooms = self.rooms.read().await;
-        rooms.contains_key(&chat_room_id)
+        let room = rooms.get(chat_room_id);
+        if let Some(room) = room {
+            room.customer_id == user_id.to_string()
+        } else {
+            false
+        }
+    }
+
+    pub async fn enter_room(
+        &self,
+        role: UserRole,
+        chat_room_id: ChatRoomId,
+        user_id: i64,
+    ) -> MangJooResult<()> {
+        if role.is_user() {
+            return Err(AppError::InvalidRequest("Can't enter on user".to_string()));
+        }
+
+        let mut rooms = self.rooms.write().await;
+        let room = rooms
+            .get_mut(&chat_room_id)
+            .ok_or_else(|| AppError::InvalidRequest("Not found chat room".to_string()))?;
+
+        let _ = room.enter_agent(user_id.to_string())?;
+
+        Ok(())
+    }
+
+    pub async fn remove_room(&self, chat_room_id: &ChatRoomId) -> MangJooResult<()> {
+        let mut rooms = self.rooms.write().await;
+        let _ = rooms.remove(chat_room_id);
+
+        Ok(())
     }
 }
