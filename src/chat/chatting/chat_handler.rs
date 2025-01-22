@@ -1,4 +1,4 @@
-use futures::{SinkExt, StreamExt};
+use futures::{SinkExt, StreamExt, TryFutureExt};
 use std::{ops::Not, sync::Arc};
 use tokio::sync::broadcast;
 
@@ -10,7 +10,12 @@ use axum::{
 use serde::{Deserialize, Serialize};
 use tracing::info;
 
-use crate::config::{app_state::AppState, error::AppError};
+use crate::config::{
+    app_state::AppState,
+    error::AppError,
+    session::{AuthUser, RequiredUser, UserSession},
+    MangJooResult,
+};
 
 use super::{chat_service, ChatRoomId};
 
@@ -27,6 +32,7 @@ pub struct CreateRoomResponse {
 #[tracing::instrument]
 pub async fn create_room(
     State(app_state): State<Arc<AppState>>,
+    RequiredUser(session): RequiredUser,
     Json(request): Json<CreateRoomRequest>,
 ) -> Result<Json<CreateRoomResponse>, AppError> {
     let result = chat_service::create_room(request.customer_id, &app_state.rooms).await;
@@ -49,8 +55,12 @@ pub async fn join_chat_room(
     State(app_state): State<Arc<AppState>>,
     ws: WebSocketUpgrade,
     Path(room_id): Path<ChatRoomId>,
+    AuthUser(user_session): AuthUser,
 ) -> impl IntoResponse {
-    let is_available_room = app_state.rooms.is_available_room(room_id.clone()).await;
+    let is_available_room = app_state
+        .rooms
+        .is_available_room(&room_id, user_session.user_id)
+        .await;
     if is_available_room.not() {
         return Err(AppError::RoomNotFound(format!(
             "The room does not exists. Room Id = {}",
@@ -58,18 +68,28 @@ pub async fn join_chat_room(
         )));
     }
 
-    Ok(ws.on_upgrade(move |socket| handle_socket(socket, Arc::clone(&app_state), room_id)))
+    Ok(ws.on_upgrade(move |socket| {
+        handle_socket(socket, Arc::clone(&app_state), room_id, user_session)
+            .unwrap_or_else(|err| eprintln!("{}", err))
+    }))
 }
 
 async fn handle_socket(
     socket: axum::extract::ws::WebSocket,
     state: Arc<AppState>,
     room_id: ChatRoomId,
-) {
+    user_session: UserSession,
+) -> MangJooResult<()> {
     let (mut ws_sender, mut ws_receiver) = socket.split();
 
-    // 1. socket_room lock을 빨리 해제하기 위해 scope 사용
     let tx = {
+        if user_session.is_agent() {
+            let _ = state
+                .rooms
+                .enter_room(user_session.role, room_id.clone(), user_session.user_id)
+                .await?;
+        };
+
         let socket_room = state.socket_rooms.read().await; // write 대신 read 사용
         socket_room.get(&room_id).expect("Room not found").clone()
     };
@@ -90,6 +110,14 @@ async fn handle_socket(
         println!("Starting receive task"); // 디버그 로그
         while let Some(Ok(message)) = ws_receiver.next().await {
             if let Message::Text(text) = message {
+                if text.to_string() == "종료".to_string() {
+                    let _ = tx_clone
+                        .send(Message::Text(text))
+                        .map_err(|err| AppError::InternalError(err.to_string()));
+                    println!("Chat End");
+                    return;
+                }
+
                 if tx_clone.send(Message::Text(text)).is_err() {
                     println!("Error broadcasting message, closing receive task"); // 에러 로그
                     return;
@@ -113,7 +141,13 @@ async fn handle_socket(
     println!("WebSocket connection closed for room: {}", room_id.0);
     println!("Number of subscribers remaining: {}", tx.receiver_count());
 
+    if tx.receiver_count() <= 1 {
+        let _ = state.socket_rooms.write().await.remove(&room_id);
+        let _ = state.rooms.remove_room(&room_id);
+    };
+
     let _ = tx.send(Message::Text(
         format!("A user has disconnected from room {}", room_id.0).into(),
     ));
+    Ok(())
 }
