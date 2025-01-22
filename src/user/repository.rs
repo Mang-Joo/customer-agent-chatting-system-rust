@@ -1,7 +1,7 @@
 use chrono::NaiveDateTime;
 use sqlx::PgPool;
 
-use crate::config::{error::AppError, Result};
+use crate::config::{error::AppError, MangJooResult};
 
 use super::{service::UserRegister, user::User};
 
@@ -15,7 +15,7 @@ impl UserRepository {
         Self { pool }
     }
 
-    pub async fn register(&self, user: UserRegister) -> Result<User> {
+    pub async fn register(&self, user: UserRegister) -> MangJooResult<User> {
         let result = sqlx::query_as!(
             UserEntity,
             "INSERT INTO users (email, password, name)
@@ -33,7 +33,7 @@ impl UserRepository {
         Ok(result.to_user())
     }
 
-    pub async fn find_by_email(&self, email: String) -> Result<User> {
+    pub async fn find_by_email(&self, email: String) -> MangJooResult<User> {
         let user_entity = sqlx::query_as!(
             UserEntity,
             "SELECT * 

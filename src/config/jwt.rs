@@ -6,7 +6,7 @@ use http::header;
 use jsonwebtoken::{decode, encode, DecodingKey, EncodingKey, Header, Validation};
 use serde::{Deserialize, Serialize};
 
-use super::{error::AppError, Result};
+use super::{error::AppError, MangJooResult};
 
 #[derive(Debug, Serialize, Deserialize, Clone, Default)]
 pub struct JwtClaims {
@@ -53,7 +53,7 @@ impl JwtManager {
         }
     }
 
-    pub fn generate_token(&self, user_id: i64, role: &str) -> Result<String> {
+    pub fn generate_token(&self, user_id: i64, role: &str) -> MangJooResult<String> {
         let now = Utc::now();
         let expires_at = now + Duration::hours(24);
 
@@ -70,7 +70,7 @@ impl JwtManager {
         Ok(encoded_token)
     }
 
-    pub fn verify_token(&self, token: &str) -> Result<JwtClaims> {
+    pub fn verify_token(&self, token: &str) -> MangJooResult<JwtClaims> {
         let validation = Validation::default();
 
         let token_data = decode::<JwtClaims>(token, &self.decondig_key, &validation)
@@ -92,7 +92,7 @@ where
     async fn from_request_parts(
         parts: &mut axum::http::request::Parts,
         _state: &S,
-    ) -> Result<Self> {
+    ) -> MangJooResult<Self> {
         let auth_header = parts
             .headers
             .get(header::AUTHORIZATION)
@@ -126,7 +126,7 @@ where
     async fn from_request_parts(
         parts: &mut axum::http::request::Parts,
         _state: &S,
-    ) -> Result<Self> {
+    ) -> MangJooResult<Self> {
         let auth_header = parts
             .headers
             .get(header::AUTHORIZATION)

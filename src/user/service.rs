@@ -2,7 +2,7 @@ use crate::config::{
     error::AppError,
     hash::{hash, verify},
     jwt::JwtManager,
-    Result,
+    MangJooResult,
 };
 
 use super::repository::UserRepository;
@@ -21,7 +21,7 @@ impl UserService {
         &self,
         user_register: UserRegister,
         jwt_manager: &JwtManager,
-    ) -> Result<String> {
+    ) -> MangJooResult<String> {
         let register = self
             .user_repository
             .register(user_register.hash_password().await?)
@@ -32,7 +32,7 @@ impl UserService {
         Ok(token)
     }
 
-    pub async fn login(&self, login: UserLogin, jwt_manager: &JwtManager) -> Result<String> {
+    pub async fn login(&self, login: UserLogin, jwt_manager: &JwtManager) -> MangJooResult<String> {
         let user = self.user_repository.find_by_email(login.email).await?;
 
         let verify_password = verify(&login.password, &user.password).await;
@@ -60,7 +60,7 @@ impl UserRegister {
         }
     }
 
-    pub async fn hash_password(self) -> Result<Self> {
+    pub async fn hash_password(self) -> MangJooResult<Self> {
         let hash_password = hash(&self.password).await?;
         Ok(Self {
             password: hash_password,

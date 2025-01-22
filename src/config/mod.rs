@@ -6,7 +6,7 @@ use opentelemetry_semantic_conventions::resource;
 
 use crate::constants::{APP_NAME, ENVIRONMENT};
 
-pub type Result<T> = std::result::Result<T, AppError>;
+pub type MangJooResult<T> = std::result::Result<T, AppError>;
 
 pub static RESOURCE: Lazy<Resource> = Lazy::new(|| {
     Resource::new(vec![
@@ -24,4 +24,5 @@ pub mod db;
 pub mod error;
 pub mod hash;
 pub mod jwt;
+pub mod session;
 pub mod telemetry;

@@ -4,9 +4,9 @@ use argon2::{
 };
 use tracing::error;
 
-use super::{error::AppError, Result};
+use super::{error::AppError, MangJooResult};
 
-pub async fn hash(plain_data: &String) -> Result<String> {
+pub async fn hash(plain_data: &String) -> MangJooResult<String> {
     // 랜덤 솔트 생성
     let salt = SaltString::generate(&mut OsRng);
 
