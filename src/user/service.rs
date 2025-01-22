@@ -5,7 +5,7 @@ use crate::config::{
     MangJooResult,
 };
 
-use super::repository::UserRepository;
+use super::{repository::UserRepository, user::UserRole};
 
 #[derive(Debug, Clone)]
 pub struct UserService {
@@ -49,14 +49,16 @@ pub struct UserRegister {
     pub email: String,
     pub password: String,
     pub name: String,
+    pub role: UserRole,
 }
 
 impl UserRegister {
-    pub fn new(email: String, password: String, name: String) -> Self {
+    pub fn new(email: String, password: String, name: String, role: UserRole) -> Self {
         Self {
             email,
             password,
             name,
+            role,
         }
     }
 
