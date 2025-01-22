@@ -1,3 +1,5 @@
+use serde::{Deserialize, Serialize};
+
 #[derive(Debug, Clone)]
 pub struct User {
     pub id: i64,
@@ -14,5 +16,22 @@ impl User {
             password,
             name,
         }
+    }
+}
+
+// 권한을 나타내는 열거형
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+pub enum UserRole {
+    Agent,
+    User,
+}
+
+impl UserRole {
+    pub fn is_user(&self) -> bool {
+        self == &UserRole::User
+    }
+
+    pub fn is_agent(&self) -> bool {
+        self == &UserRole::Agent
     }
 }
