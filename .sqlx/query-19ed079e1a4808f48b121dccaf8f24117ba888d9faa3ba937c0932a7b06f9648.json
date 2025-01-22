@@ -25,16 +25,21 @@
       },
       {
         "ordinal": 4,
+        "name": "role",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 5,
         "name": "created_at",
         "type_info": "Timestamp"
       },
       {
-        "ordinal": 5,
+        "ordinal": 6,
         "name": "updated_at",
         "type_info": "Timestamp"
       },
       {
-        "ordinal": 6,
+        "ordinal": 7,
         "name": "deleted",
         "type_info": "Bool"
       }
@@ -45,6 +50,7 @@
       ]
     },
     "nullable": [
+      false,
       false,
       false,
       false,
