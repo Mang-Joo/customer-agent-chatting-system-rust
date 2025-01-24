@@ -7,22 +7,17 @@ use axum::{
     response::IntoResponse,
     Json,
 };
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 use tracing::info;
 
 use crate::config::{
-    app_state::AppState,
+    app_state::ArcAppState,
     error::AppError,
     session::{AuthUser, RequiredUser, UserSession},
     MangJooResult,
 };
 
 use super::{chat_service, ChatRoomId};
-
-#[derive(Debug, Deserialize)]
-pub struct CreateRoomRequest {
-    customer_id: i64,
-}
 
 #[derive(Debug, Serialize)]
 pub struct CreateRoomResponse {
@@ -31,11 +26,10 @@ pub struct CreateRoomResponse {
 
 #[tracing::instrument]
 pub async fn create_room(
-    State(app_state): State<Arc<AppState>>,
+    State(app_state): State<ArcAppState>,
     RequiredUser(session): RequiredUser,
-    Json(request): Json<CreateRoomRequest>,
 ) -> Result<Json<CreateRoomResponse>, AppError> {
-    let result = chat_service::create_room(request.customer_id, &app_state.rooms).await;
+    let result = chat_service::create_room(session.user_id, &app_state.rooms).await;
     match result {
         Ok(room_id) => {
             let mut socket_room = app_state.socket_rooms.write().await;
@@ -52,7 +46,7 @@ pub async fn create_room(
 
 #[tracing::instrument]
 pub async fn join_chat_room(
-    State(app_state): State<Arc<AppState>>,
+    State(app_state): State<ArcAppState>,
     ws: WebSocketUpgrade,
     Path(room_id): Path<ChatRoomId>,
     AuthUser(user_session): AuthUser,
@@ -76,7 +70,7 @@ pub async fn join_chat_room(
 
 async fn handle_socket(
     socket: axum::extract::ws::WebSocket,
-    state: Arc<AppState>,
+    state: ArcAppState,
     room_id: ChatRoomId,
     user_session: UserSession,
 ) -> MangJooResult<()> {

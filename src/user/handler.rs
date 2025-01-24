@@ -1,7 +1,11 @@
-use axum::{Extension, Json};
+use axum::{extract::State, Extension, Json};
 use serde::Deserialize;
+use tower_cookies::{
+    cookie::{time::Duration, SameSite},
+    Cookie, Cookies,
+};
 
-use crate::config::{error::AppError, jwt::JwtManager, MangJooResult};
+use crate::config::{app_state::ArcAppState, MangJooResult};
 
 use super::{
     service::{UserLogin, UserRegister, UserService},
@@ -11,45 +15,55 @@ use super::{
 #[tracing::instrument]
 pub async fn register_user(
     Extension(user_service): Extension<UserService>,
-    Extension(jwt_manager): Extension<JwtManager>,
     Json(request): Json<RegisterUserRequest>,
-) -> MangJooResult<Json<String>> {
+) -> MangJooResult<()> {
     let user_register = UserRegister::new(
         request.email,
         request.password,
         request.name,
         UserRole::User,
     );
-    let token = user_service.register(user_register, &jwt_manager).await?;
+    let _ = user_service.register(user_register).await?;
 
-    Ok(Json(String::from(token)))
+    Ok(())
 }
 
 #[tracing::instrument]
 pub async fn register_agent(
     Extension(user_service): Extension<UserService>,
-    Extension(jwt_manager): Extension<JwtManager>,
     Json(request): Json<RegisterUserRequest>,
-) -> MangJooResult<Json<String>> {
+) -> MangJooResult<()> {
     let user_register = UserRegister::new(
         request.email,
         request.password,
         request.name,
         UserRole::Agent,
     );
-    let token = user_service.register(user_register, &jwt_manager).await?;
-    Ok(Json(token))
+    let _ = user_service.register(user_register).await?;
+    Ok(())
 }
 
 pub async fn login_hander(
+    State(app_state): State<ArcAppState>,
     Extension(user_service): Extension<UserService>,
-    Extension(jwt_manager): Extension<JwtManager>,
+    cookies: Cookies,
     Json(request): Json<LoginRequest>,
-) -> Result<Json<String>, AppError> {
+) -> MangJooResult<()> {
     let user_login = UserLogin::new(request.email, request.password);
-    let token = user_service.login(user_login, &jwt_manager).await?;
+    let session = user_service
+        .login(user_login, &app_state.session_store)
+        .await?;
 
-    Ok(Json(String::from(token)))
+    let cookie = Cookie::build(("session_id", session.clone()))
+        .path("/")
+        .secure(false)
+        .http_only(true)
+        .same_site(SameSite::Strict)
+        .max_age(Duration::hours(24));
+
+    cookies.add(cookie.build());
+
+    Ok(())
 }
 
 #[derive(Debug, Deserialize)]

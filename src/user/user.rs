@@ -2,7 +2,7 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone)]
 pub struct User {
-    pub id: i64,
+    pub user_id: i64,
     pub email: String,
     pub password: String,
     pub name: String,
@@ -12,7 +12,7 @@ pub struct User {
 impl User {
     pub fn new(id: i64, email: String, password: String, name: String, role: UserRole) -> Self {
         Self {
-            id,
+            user_id: id,
             email,
             password,
             name,
