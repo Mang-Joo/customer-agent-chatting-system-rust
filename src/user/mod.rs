@@ -1,7 +1,10 @@
+use std::sync::Arc;
+
 use axum::{routing::post, Extension, Router};
 use handler::{login_hander, register_user};
 use repository::UserRepository;
 use service::UserService;
+use tower_cookies::CookieManagerLayer;
 
 use crate::config::app_state::ArcAppState;
 
@@ -17,4 +20,6 @@ pub async fn create_user_router(app_state: ArcAppState) -> Router {
         .layer(Extension(UserService::new(UserRepository::new(
             app_state.db_pool.clone(),
         ))))
+        .layer(CookieManagerLayer::new())
+        .with_state(Arc::clone(&app_state))
 }

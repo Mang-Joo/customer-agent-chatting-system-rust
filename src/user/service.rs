@@ -1,7 +1,7 @@
 use crate::config::{
     error::AppError,
     hash::{hash, verify},
-    jwt::JwtManager,
+    session::{SessionManager, UserSession},
     MangJooResult,
 };
 
@@ -17,28 +17,28 @@ impl UserService {
         Self { user_repository }
     }
 
-    pub async fn register(
-        &self,
-        user_register: UserRegister,
-        jwt_manager: &JwtManager,
-    ) -> MangJooResult<String> {
-        let register = self
+    pub async fn register(&self, user_register: UserRegister) -> MangJooResult<()> {
+        let _ = self
             .user_repository
             .register(user_register.hash_password().await?)
             .await?;
 
-        let token = jwt_manager.generate_token(register.id, "User")?;
-
-        Ok(token)
+        Ok(())
     }
 
-    pub async fn login(&self, login: UserLogin, jwt_manager: &JwtManager) -> MangJooResult<String> {
+    pub async fn login(
+        &self,
+        login: UserLogin,
+        session_manager: &SessionManager,
+    ) -> MangJooResult<String> {
         let user = self.user_repository.find_by_email(login.email).await?;
 
         let verify_password = verify(&login.password, &user.password).await;
 
         match verify_password {
-            true => Ok(jwt_manager.generate_token(user.id, "User")?),
+            true => Ok(session_manager
+                .create_user_session(UserSession::new(&user))
+                .await?),
             false => Err(AppError::Unauthorized("Invalid Password".to_string())),
         }
     }
