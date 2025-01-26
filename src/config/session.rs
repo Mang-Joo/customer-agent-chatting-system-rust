@@ -61,7 +61,7 @@ impl SessionManager {
         };
     }
 
-    pub async fn renewal_user_session(&self, session_id: &str) -> MangJooResult<()> {
+    pub async fn renewal_user_session(&self, session_id: &str) -> MangJooResult<UserSession> {
         let session = self
             .store
             .load_session(session_id.to_string())
@@ -73,11 +73,15 @@ impl SessionManager {
 
         session.expire_in(std::time::Duration::from_secs(24 * 60 * 60));
 
+        let user_session = session
+            .get::<UserSession>(SESSION_KEY)
+            .ok_or_else(|| AppError::Unauthorized("Session Invalid".to_string()))?;
+
         let _ = self.store.store_session(session).await.map_err(|err| {
             AppError::InternalError(format!("Session insert error {}", err.to_string()))
         })?;
 
-        Ok(())
+        Ok(user_session)
     }
 }
 
@@ -141,9 +145,10 @@ where
             .ok_or_else(|| AppError::Unauthorized("Session Required.".to_string()))?;
 
         let session_manager = &state.session_store;
-        let _ = session_manager.renewal_user_session(&session).await?;
-        let user_session = session_manager.get_user_session(&session).await?;
-        Ok(AuthUser(user_session))
+
+        Ok(AuthUser(
+            session_manager.renewal_user_session(&session).await?,
+        ))
     }
 }
 
