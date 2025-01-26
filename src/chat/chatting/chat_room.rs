@@ -1,30 +1,58 @@
-use std::{collections::HashMap, sync::Arc};
+use std::str::FromStr;
 
 use chrono::{DateTime, Utc};
 use serde::Serialize;
-use tokio::sync::RwLock;
 use uuid::Uuid;
 
-use crate::{
-    config::{error::AppError, MangJooResult},
-    user::user::UserRole,
-};
+use crate::config::{error::AppError, MangJooResult};
 
 use super::ChatRoomId;
 
-// 채팅방 정보
 #[derive(Debug, Clone, Serialize)]
-struct ChatRoom {
+pub struct ChatRoom {
+    id: i64,
     room_id: ChatRoomId,
-    customer_id: String,
-    agent_id: Option<String>,
+    customer_id: i64,
+    agent_id: Option<i64>,
     status: RoomStatus,
     created_at: DateTime<Utc>,
     updated_at: DateTime<Utc>,
 }
 
 impl ChatRoom {
-    pub fn enter_agent(&mut self, agent_id: String) -> MangJooResult<()> {
+    pub fn new(customer_id: i64) -> Self {
+        Self {
+            id: 0,
+            room_id: ChatRoomId(Uuid::new_v4()),
+            customer_id,
+            agent_id: None,
+            status: RoomStatus::Waiting,
+            created_at: Utc::now(),
+            updated_at: Utc::now(),
+        }
+    }
+
+    pub fn from(
+        id: i64,
+        room_id: Uuid,
+        customer_id: i64,
+        agent_id: Option<i64>,
+        status: RoomStatus,
+        created_at: DateTime<Utc>,
+        updated_at: DateTime<Utc>,
+    ) -> Self {
+        Self {
+            id,
+            room_id: ChatRoomId(room_id),
+            customer_id,
+            agent_id,
+            status,
+            created_at,
+            updated_at,
+        }
+    }
+
+    pub fn enter_agent(&mut self, agent_id: i64) -> MangJooResult<()> {
         if self.agent_id.is_some() {
             return Err(AppError::InvalidRequest(
                 "This chat room is full".to_string(),
@@ -41,84 +69,65 @@ impl ChatRoom {
         self.status = RoomStatus::Ended;
         self.updated_at = Utc::now();
     }
+
+    pub fn id(&self) -> i64 {
+        self.id
+    }
+
+    pub fn room_id(&self) -> &Uuid {
+        &self.room_id.0
+    }
+
+    pub fn customer_id(&self) -> i64 {
+        self.customer_id
+    }
+
+    pub fn agent_id(&self) -> Option<i64> {
+        self.agent_id
+    }
+
+    pub fn status(&self) -> &RoomStatus {
+        &self.status
+    }
+
+    pub fn created_at(&self) -> DateTime<Utc> {
+        self.created_at
+    }
+
+    pub fn updated_at(&self) -> DateTime<Utc> {
+        self.updated_at
+    }
 }
 
 #[derive(Debug, Clone, Serialize, PartialEq)]
 pub enum RoomStatus {
-    Waiting,   // 상담원 배정 대기
-    Connected, // 상담 진행 중
-    Ended,     // 종료됨
+    Waiting,
+    Connected,
+    Ended,
 }
 
-#[derive(Debug, Clone)]
-pub struct ChatRooms {
-    rooms: Arc<RwLock<HashMap<ChatRoomId, ChatRoom>>>,
+impl ToString for RoomStatus {
+    fn to_string(&self) -> String {
+        match self {
+            RoomStatus::Waiting => "Waiting".to_string(),
+            RoomStatus::Connected => "Connected".to_string(),
+            RoomStatus::Ended => "Ended".to_string(),
+        }
+    }
 }
 
-impl ChatRooms {
-    pub fn new() -> Self {
-        Self {
-            rooms: Arc::new(RwLock::new(HashMap::new())),
+impl FromStr for RoomStatus {
+    type Err = AppError;
+
+    fn from_str(s: &str) -> MangJooResult<Self> {
+        match s.to_uppercase().as_str() {
+            "WAITING" => Ok(RoomStatus::Waiting),
+            "CONNECTED" => Ok(RoomStatus::Connected),
+            "ENDED" => Ok(RoomStatus::Ended),
+            _ => Err(AppError::InternalError(format!(
+                "Invalid RoomStatus: {}",
+                s
+            ))),
         }
-    }
-
-    pub async fn create_room(&self, customer_id: i64) -> MangJooResult<String> {
-        let room_id = Uuid::new_v4().to_string();
-        let now = Utc::now();
-
-        let chat_room = ChatRoom {
-            room_id: ChatRoomId(room_id.to_string()),
-            customer_id: customer_id.to_string(),
-            agent_id: None,
-            status: RoomStatus::Waiting,
-            created_at: now,
-            updated_at: now,
-        };
-
-        {
-            let mut rooms = self.rooms.write().await;
-            let chat_room_id = ChatRoomId(room_id.to_string());
-            rooms.insert(chat_room_id, chat_room);
-            println!("Rooms are {:?}", rooms);
-        }
-
-        Ok(room_id.to_string())
-    }
-
-    pub async fn is_available_room(&self, chat_room_id: &ChatRoomId, user_id: i64) -> bool {
-        let rooms = self.rooms.read().await;
-        let room = rooms.get(chat_room_id);
-        if let Some(room) = room {
-            room.customer_id == user_id.to_string()
-        } else {
-            false
-        }
-    }
-
-    pub async fn enter_room(
-        &self,
-        role: UserRole,
-        chat_room_id: ChatRoomId,
-        user_id: i64,
-    ) -> MangJooResult<()> {
-        if role.is_user() {
-            return Err(AppError::InvalidRequest("Can't enter on user".to_string()));
-        }
-
-        let mut rooms = self.rooms.write().await;
-        let room = rooms
-            .get_mut(&chat_room_id)
-            .ok_or_else(|| AppError::InvalidRequest("Not found chat room".to_string()))?;
-
-        let _ = room.enter_agent(user_id.to_string())?;
-
-        Ok(())
-    }
-
-    pub async fn remove_room(&self, chat_room_id: &ChatRoomId) -> MangJooResult<()> {
-        let mut rooms = self.rooms.write().await;
-        let _ = rooms.remove(chat_room_id);
-
-        Ok(())
     }
 }
