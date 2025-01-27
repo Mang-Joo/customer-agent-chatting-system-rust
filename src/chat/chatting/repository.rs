@@ -88,10 +88,10 @@ pub async fn save(
     let chat_room_entity = query_as!(
         ChatRoomEntity,
         "
-        INSERT INTO CHAT_ROOM (room_id, customer_id, agent_id, status)
-        VALUES ($1, $2, $3, $4)
-        RETURNING *
-        ",
+            INSERT INTO CHAT_ROOM (room_id, customer_id, agent_id, status)
+            VALUES ($1, $2, $3, $4)
+            RETURNING *
+            ",
         chat_room.room_id(),
         chat_room.customer_id(),
         chat_room.agent_id(),

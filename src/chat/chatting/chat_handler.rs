@@ -30,9 +30,7 @@ pub async fn create_room(
     Extension(service): Extension<ChatService>,
     RequiredUser(session): RequiredUser,
 ) -> Result<Json<CreateRoomResponse>, AppError> {
-    let result = service
-        .create_room(Arc::clone(&app_state), session.user_id)
-        .await;
+    let result = service.create_room(session.user_id).await;
 
     match result {
         Ok(room_id) => {

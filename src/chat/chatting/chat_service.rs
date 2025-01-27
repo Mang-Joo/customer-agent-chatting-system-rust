@@ -1,5 +1,6 @@
 use std::sync::Arc;
 
+use futures::FutureExt;
 use sqlx::Acquire;
 
 use crate::config::{app_state::ArcAppState, db::transaction, error::AppError, MangJooResult};
@@ -22,25 +23,12 @@ impl ChatService {
         }
     }
 
-    pub async fn create_room(
-        &self,
-        app_state: ArcAppState,
-        customer_id: i64,
-    ) -> MangJooResult<ChatRoomId> {
+    pub async fn create_room(&self, customer_id: i64) -> MangJooResult<ChatRoomId> {
         let create_room = ChatRoom::new(customer_id);
 
-        let chat_room = async {
-            let mut transaction = app_state.create_transaction().await?;
-            let mut tx = transaction
-                .begin()
-                .await
-                .map_err(|err| AppError::DatabaseError(err.to_string()))?;
-
-            let chat_room = repository::save(create_room, &mut tx).await?;
-
-            let _ = tx.commit().await;
-            Ok(chat_room)
-        }
+        let chat_room = transaction(&self.chat_repository.pool, |tx| {
+            repository::save(create_room, tx).boxed()
+        })
         .await?;
 
         Ok(ChatRoomId::from(chat_room))
