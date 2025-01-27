@@ -5,7 +5,7 @@ use tokio::sync::broadcast;
 use axum::{
     extract::{ws::Message, Path, State, WebSocketUpgrade},
     response::IntoResponse,
-    Json,
+    Extension, Json,
 };
 use serde::Serialize;
 use tracing::info;
@@ -17,7 +17,7 @@ use crate::config::{
     MangJooResult,
 };
 
-use super::{chat_service, ChatRoomId};
+use super::{chat_service::ChatService, ChatRoomId};
 
 #[derive(Debug, Serialize)]
 pub struct CreateRoomResponse {
@@ -27,9 +27,11 @@ pub struct CreateRoomResponse {
 #[tracing::instrument]
 pub async fn create_room(
     State(app_state): State<ArcAppState>,
+    Extension(service): Extension<ChatService>,
     RequiredUser(session): RequiredUser,
 ) -> Result<Json<CreateRoomResponse>, AppError> {
-    let result = chat_service::create_room(session.user_id, &app_state.rooms).await;
+    let result = service.create_room(session.user_id).await;
+
     match result {
         Ok(room_id) => {
             let mut socket_room = app_state.socket_rooms.write().await;
@@ -51,21 +53,21 @@ pub async fn join_chat_room(
     Path(room_id): Path<ChatRoomId>,
     AuthUser(user_session): AuthUser,
 ) -> impl IntoResponse {
-    let is_available_room = app_state
-        .rooms
-        .is_available_room(&room_id, user_session.user_id)
-        .await;
-    if is_available_room.not() {
-        return Err(AppError::RoomNotFound(format!(
-            "The room does not exists. Room Id = {}",
-            room_id.0
-        )));
-    }
+    // let is_available_room = app_state
+    //     .rooms
+    //     .is_available_room(&room_id, user_session.user_id)
+    //     .await;
+    // if is_available_room.not() {
+    //     return Err(AppError::RoomNotFound(format!(
+    //         "The room does not exists. Room Id = {}",
+    //         room_id.0
+    //     )));
+    // }
 
-    Ok(ws.on_upgrade(move |socket| {
-        handle_socket(socket, Arc::clone(&app_state), room_id, user_session)
-            .unwrap_or_else(|err| eprintln!("{}", err))
-    }))
+    // Ok(ws.on_upgrade(move |socket| {
+    //     handle_socket(socket, Arc::clone(&app_state), room_id, user_session)
+    //         .unwrap_or_else(|err| eprintln!("{}", err))
+    // }))
 }
 
 async fn handle_socket(
@@ -77,13 +79,6 @@ async fn handle_socket(
     let (mut ws_sender, mut ws_receiver) = socket.split();
 
     let tx = {
-        if user_session.is_agent() {
-            let _ = state
-                .rooms
-                .enter_room(user_session.role, room_id.clone(), user_session.user_id)
-                .await?;
-        };
-
         let socket_room = state.socket_rooms.read().await; // write 대신 read 사용
         socket_room.get(&room_id).expect("Room not found").clone()
     };
@@ -137,7 +132,7 @@ async fn handle_socket(
 
     if tx.receiver_count() <= 1 {
         let _ = state.socket_rooms.write().await.remove(&room_id);
-        let _ = state.rooms.remove_room(&room_id);
+        // let _ = state.rooms.remove_room(&room_id);
     };
 
     let _ = tx.send(Message::Text(

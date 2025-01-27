@@ -1,9 +1,36 @@
-use crate::config::MangJooResult;
+use std::sync::Arc;
 
-use super::{chat_room::ChatRooms, ChatRoomId};
+use futures::FutureExt;
+use sqlx::Acquire;
 
-pub async fn create_room(customer_id: i64, chat_rooms: &ChatRooms) -> MangJooResult<ChatRoomId> {
-    let create_room = chat_rooms.create_room(customer_id).await?;
+use crate::config::{app_state::ArcAppState, db::transaction, error::AppError, MangJooResult};
 
-    Ok(ChatRoomId(create_room))
+use super::{
+    chat_room::ChatRoom,
+    repository::{self, ChatRepository},
+    ChatRoomId,
+};
+
+#[derive(Debug, Clone)]
+pub struct ChatService {
+    chat_repository: Arc<ChatRepository>,
+}
+
+impl ChatService {
+    pub fn new(chat_repository: ChatRepository) -> Self {
+        Self {
+            chat_repository: Arc::new(chat_repository),
+        }
+    }
+
+    pub async fn create_room(&self, customer_id: i64) -> MangJooResult<ChatRoomId> {
+        let create_room = ChatRoom::new(customer_id);
+
+        let chat_room = transaction(&self.chat_repository.pool, |tx| {
+            repository::save(create_room, tx).boxed()
+        })
+        .await?;
+
+        Ok(ChatRoomId::from(chat_room))
+    }
 }
